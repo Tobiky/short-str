@@ -222,8 +222,8 @@ impl PartialEq<ShortStr> for ShortStr {
     }
 }
 
-impl PartialEq<str> for ShortStr {
-    fn eq(&self, other: &str) -> bool {
+impl PartialEq<&str> for ShortStr {
+    fn eq(&self, other: &&str) -> bool {
         #[cfg(debug_assertions)]
         assert_assumptions();
         // safety:
@@ -233,7 +233,7 @@ impl PartialEq<str> for ShortStr {
         let other_str_ref = unsafe { transmute::<&str, ShortStr>(other) }.is_str_ref();
         let other = if other_str_ref {
             // other is actually a &str and not accidentally through Deref, coerce into ShortStr
-            ShortStr::from(other)
+            ShortStr::from(*other)
         } else {
             // other is not actually a &str but a ShortStr, probably from deref, so we just transform
             unsafe { transmute::<&str, ShortStr>(other) }
@@ -244,7 +244,7 @@ impl PartialEq<str> for ShortStr {
     }
 }
 
-impl PartialEq<ShortStr> for str {
+impl PartialEq<ShortStr> for &str {
     fn eq(&self, other: &ShortStr) -> bool {
         other.eq(self)
     }
