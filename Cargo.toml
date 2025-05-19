@@ -1,5 +1,5 @@
 [package]
-name = "trans-str"
+name = "short-str"
 version = "0.1.0"
 edition = "2024"
 
