@@ -1,4 +1,6 @@
-use crate::ShStr;
+use core::mem::transmute;
+
+use crate::{ShStr, ShortStr};
 
 mod assumptions {
     use crate::{CoveringInt, ShStr};
@@ -37,4 +39,21 @@ mod assumptions {
             SHSTR_SIZE
         )
     }
+}
+
+#[test]
+fn long_str_facade() {
+    let a = "1 2 3 4 5 6 7 8 9 10";
+    let short = ShStr::from(a);
+    assert!(
+        short.is_str_ref(),
+        "expected long &str (length: {}) to become a ShortStr facade",
+        a.len()
+    );
+    assert_eq!(a, short, "expected &str and its facade ShortStr to be equal");
+    #[rustfmt::skip]
+    assert_eq!(
+        unsafe { transmute::<&str, [u8; size_of::<&str>()]>(a) },
+        unsafe { transmute::<ShortStr, [u8; size_of::<&str>()]>(short) }
+    );
 }
