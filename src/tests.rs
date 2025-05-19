@@ -76,3 +76,20 @@ fn short_str_inline() {
     );
     assert_eq!(a, short, "expected inlined &str (ShortStr) to be equal to its original")
 }
+
+#[test]
+fn empty_str_inline() {
+    let a = "";
+    let short = ShStr::from(a);
+    assert!(!short.is_str_ref(), "expected empty &str to become inlined in ShortStr");
+    assert!(
+        short.is_zero_len(),
+        "expected empty &str to become empty ShortStr, but got one with length {}",
+        short.len()
+    );
+    assert_eq!(
+        short,
+        ShStr::EMPTY,
+        "expected converted empty &str to be equal to constant empty ShortStr"
+    );
+}
