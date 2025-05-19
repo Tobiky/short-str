@@ -57,3 +57,22 @@ fn long_str_facade() {
         unsafe { transmute::<ShortStr, [u8; size_of::<&str>()]>(short) }
     );
 }
+
+#[test]
+fn short_str_inline() {
+    let a = "hi";
+    let short = ShStr::from(a);
+    assert!(
+        !short.is_str_ref(),
+        "expected short &str (length: {}) to become inlined in ShortStr",
+        a.len()
+    );
+    assert_eq!(
+        short.len(),
+        a.len(),
+        "expected inlined &str (ShortStr) to have same length as original ({} vs. {})",
+        short.len(),
+        a.len(),
+    );
+    assert_eq!(a, short, "expected inlined &str (ShortStr) to be equal to its original")
+}
