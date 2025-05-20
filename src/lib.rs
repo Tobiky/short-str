@@ -15,37 +15,26 @@ const LEN_SIZE: usize = size_of::<usize>();
 const BYTE_SIZE: usize = PTR_SIZE + LEN_SIZE;
 const INLINE_BYTE_SIZE: usize = BYTE_SIZE - 1;
 
-#[inline(always)]
-const fn assert_little_endian() {
-    concat_assert!(
-        unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
-        "big endian architecture is currently unsupported for ShortStr's",
-    );
-}
-
-#[inline(always)]
-const fn assert_str_size() {
-    concat_assert!(
-        size_of::<&str>() == PTR_SIZE + LEN_SIZE,
-        "expected &str to have size ",
-        PTR_SIZE + LEN_SIZE,
-        "(",
-        PTR_SIZE,
-        " + ",
-        LEN_SIZE,
-        ") but got size ",
-        size_of::<&str>(),
-        ", please file an issue at",
-        REPO_URL
-    );
-}
+#[cfg(debug_assertions)]
+const _ASSERT_LITTLE_ENDIAN: () = concat_assert!(
+    unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
+    "big endian architecture is currently unsupported for ShortStr's",
+);
 
 #[cfg(debug_assertions)]
-#[inline(always)]
-const fn assert_assumptions() {
-    assert_str_size();
-    assert_little_endian();
-}
+const _ASSERT_STRING_SIZE: () = concat_assert!(
+    size_of::<&str>() == PTR_SIZE + LEN_SIZE,
+    "expected &str to have size ",
+    PTR_SIZE + LEN_SIZE,
+    "(",
+    PTR_SIZE,
+    " + ",
+    LEN_SIZE,
+    ") but got size ",
+    size_of::<&str>(),
+    ", please file an issue at",
+    REPO_URL
+);
 
 // layout of &str is ptr, len
 // see `verify_layout` test
@@ -90,8 +79,6 @@ impl ShortStr {
 
     #[inline(always)]
     pub const fn len(self) -> usize {
-        #[cfg(debug_assertions)]
-        assert_assumptions();
         // assumptions: little endian
 
         // ------------------------------------------------------------------------------
@@ -129,8 +116,6 @@ impl ShortStr {
     // cause the Eq operation to fail even if they are the same
     // Example: ShortStr::from_str_unchecked("test") != ShortStr::from("test")
     pub const unsafe fn from_str_unchecked(other: &str) -> Self {
-        #[cfg(debug_assertions)]
-        assert_assumptions();
         // safety:
         // see ShortStr::len(self)
         // brief: last byte is 0 for regular &str and is used for &str detection so this
@@ -141,8 +126,6 @@ impl ShortStr {
 
 impl<'a> From<&'a str> for ShortStr {
     fn from(value: &'a str) -> Self {
-        #[cfg(debug_assertions)]
-        assert_assumptions();
         // its already a ShortStr
         // safety:
         // see ShortStr::len(self)
@@ -180,8 +163,6 @@ impl Deref for ShortStr {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(debug_assertions)]
-        assert_assumptions();
         // assumptions: little endian
         if self.is_str_ref() {
             // safety:
@@ -230,8 +211,6 @@ impl PartialEq<ShortStr> for ShortStr {
 
 impl PartialEq<&str> for ShortStr {
     fn eq(&self, other: &&str) -> bool {
-        #[cfg(debug_assertions)]
-        assert_assumptions();
         // safety:
         // see ShortStr::len(self)
         // brief: ShortStr is either fully a &str or only uses last byte to determine storage which
