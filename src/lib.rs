@@ -48,6 +48,19 @@ const _ASSERT_STRING_SIZE: () = concat_assert!(
     REPO_URL
 );
 
+
+// core::any::type_name::<CoveringInt>(),
+#[cfg(debug_assertions)]
+const _ASSERT_COVERING_INT_SIZE: () = concat_assert!(
+    size_of::<CoveringInt>() == size_of::<ShortStr>(),
+    "expected CoveringInt to match byte size with ShortStr/ShStr (",
+    size_of::<CoveringInt>(),
+    " vs. ",
+    size_of::<ShortStr>(),
+    "), please file an issue at ",
+    REPO_URL
+);
+
 // layout of &str is ptr, len
 // see `verify_layout` test
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
@@ -202,15 +215,6 @@ impl Deref for ShortStr {
 
 impl PartialEq<ShortStr> for ShortStr {
     fn eq(&self, other: &ShortStr) -> bool {
-        debug_assert_eq!(
-            size_of::<CoveringInt>(),
-            size_of::<ShortStr>(),
-            "expected {} to match byte size with ShortStr/ShStr ({} vs. {}), please file an issue at {}",
-            core::any::type_name::<CoveringInt>(),
-            size_of::<CoveringInt>(),
-            size_of::<ShortStr>(),
-            REPO_URL
-        );
         // by using an int type that covers all bytes the compiler can determine what
         // the optimal bit-size to use on instruction level (best case its actually e.g. 128-bit
         // cmp instruction)
