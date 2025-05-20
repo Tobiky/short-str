@@ -1,5 +1,10 @@
 #![no_std]
-use core::{fmt::Debug, mem::transmute, ops::Deref, ptr::copy_nonoverlapping};
+use core::{
+    fmt::{Debug, Display},
+    mem::transmute,
+    ops::Deref,
+    ptr::copy_nonoverlapping,
+};
 
 #[cfg(debug_assertions)]
 use const_panic::concat_assert;
@@ -45,6 +50,12 @@ pub struct ShortStr {
 pub type ShStr = ShortStr;
 
 impl Debug for ShortStr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self)
+    }
+}
+
+impl Display for ShortStr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self)
     }
