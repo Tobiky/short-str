@@ -153,10 +153,9 @@ impl ShortStr {
         // transmutation will just go around the potential inline str savings in the worst case
         unsafe { transmute(other) }
     }
-}
 
-impl<'a> From<&'a str> for ShortStr {
-    fn from(value: &'a str) -> Self {
+    #[inline(always)]
+    pub const fn from_str<'a>(value: &'a str) -> Self {
         // its already a ShortStr
         // safety:
         // see ShortStr::len(self)
@@ -187,6 +186,12 @@ impl<'a> From<&'a str> for ShortStr {
         else {
             short_str
         }
+    }
+}
+
+impl<'a> From<&'a str> for ShortStr {
+    fn from(value: &'a str) -> Self {
+        Self::from_str(value)
     }
 }
 
