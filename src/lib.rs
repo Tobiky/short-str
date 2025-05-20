@@ -20,6 +20,13 @@ const LEN_SIZE: usize = size_of::<usize>();
 const BYTE_SIZE: usize = PTR_SIZE + LEN_SIZE;
 const INLINE_BYTE_SIZE: usize = BYTE_SIZE - 1;
 
+#[cfg(target_pointer_width = "64")]
+type CoveringInt = u128;
+#[cfg(target_pointer_width = "32")]
+type CoveringInt = u64;
+#[cfg(target_pointer_width = "16")]
+type CoveringInt = u32;
+
 #[cfg(debug_assertions)]
 const _ASSERT_LITTLE_ENDIAN: () = concat_assert!(
     unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
@@ -192,13 +199,6 @@ impl Deref for ShortStr {
         }
     }
 }
-
-#[cfg(target_pointer_width = "64")]
-type CoveringInt = u128;
-#[cfg(target_pointer_width = "32")]
-type CoveringInt = u64;
-#[cfg(target_pointer_width = "16")]
-type CoveringInt = u32;
 
 impl PartialEq<ShortStr> for ShortStr {
     fn eq(&self, other: &ShortStr) -> bool {
