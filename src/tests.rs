@@ -93,3 +93,10 @@ fn empty_str_inline() {
         "expected converted empty &str to be equal to constant empty ShortStr"
     );
 }
+
+#[test]
+fn inline_str_upper_slice_length() {
+    let a = ShStr::from("abc");
+    let b = a[1..];
+    assert_eq!(b.len(), a[1..].len());
+}

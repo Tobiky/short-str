@@ -1,6 +1,8 @@
 #![no_std]
 use core::{
+    convert::Infallible,
     fmt::{Debug, Display},
+    marker::PhantomData,
     mem::transmute,
     ops::Deref,
     ptr::copy_nonoverlapping,
@@ -48,7 +50,6 @@ const _ASSERT_STRING_SIZE: () = concat_assert!(
     REPO_URL
 );
 
-
 // core::any::type_name::<CoveringInt>(),
 #[cfg(debug_assertions)]
 const _ASSERT_COVERING_INT_SIZE: () = concat_assert!(
@@ -64,18 +65,19 @@ const _ASSERT_COVERING_INT_SIZE: () = concat_assert!(
 // layout of &str is ptr, len
 // see `verify_layout` test
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
-pub struct ShortStr {
+pub struct ShortStr<'str_lt> {
+    _lt: PhantomData<&'str_lt Infallible>,
     data: [u8; BYTE_SIZE],
 }
-pub type ShStr = ShortStr;
+pub type ShStr<'str_lt> = ShortStr<'str_lt>;
 
-impl Debug for ShortStr {
+impl Debug for ShortStr<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self)
     }
 }
 
-impl Display for ShortStr {
+impl Display for ShortStr<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self)
     }
@@ -89,11 +91,11 @@ impl Display for ShortStr {
 // ilog2(byte size + 1) = how many bits to move over since 1 is already at first place
 // const MASK_INLINE_ZERO_LEN: usize = 1 << usize::ilog2(BYTE_SIZE);
 
-impl ShortStr {
-    pub const EMPTY: ShortStr = const {
+impl<'str_lt> ShortStr<'str_lt> {
+    pub const EMPTY: ShortStr<'str_lt> = const {
         let mut data = [0; BYTE_SIZE];
         data[BYTE_SIZE - 1] = -1i8 as u8;
-        ShortStr { data }
+        ShortStr { data, _lt: PhantomData }
     };
 
     #[inline(always)]
@@ -180,7 +182,7 @@ impl ShortStr {
                 copy_nonoverlapping(value.as_ptr(), data.as_mut_ptr(), value.len());
             }
             data[BYTE_SIZE - 1] = value.len() as u8;
-            ShortStr { data }
+            ShortStr { data, _lt: PhantomData }
         }
         // otherwise just leave alone (ShortStr facade for &str)
         else {
@@ -189,13 +191,13 @@ impl ShortStr {
     }
 }
 
-impl<'a> From<&'a str> for ShortStr {
-    fn from(value: &'a str) -> Self {
+impl From<&str> for ShortStr<'_> {
+    fn from(value: &str) -> Self {
         Self::from_str(value)
     }
 }
 
-impl Deref for ShortStr {
+impl Deref for ShortStr<'_> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -218,7 +220,7 @@ impl Deref for ShortStr {
     }
 }
 
-impl PartialEq<ShortStr> for ShortStr {
+impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
     fn eq(&self, other: &ShortStr) -> bool {
         // by using an int type that covers all bytes the compiler can determine what
         // the optimal bit-size to use on instruction level (best case its actually e.g. 128-bit
@@ -229,7 +231,7 @@ impl PartialEq<ShortStr> for ShortStr {
     }
 }
 
-impl PartialEq<&str> for ShortStr {
+impl PartialEq<&str> for ShortStr<'_> {
     fn eq(&self, other: &&str) -> bool {
         // safety:
         // see ShortStr::len(self)
@@ -249,7 +251,7 @@ impl PartialEq<&str> for ShortStr {
     }
 }
 
-impl PartialEq<ShortStr> for &str {
+impl PartialEq<ShortStr<'_>> for &str {
     fn eq(&self, other: &ShortStr) -> bool {
         other.eq(self)
     }
