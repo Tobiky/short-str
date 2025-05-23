@@ -4,7 +4,7 @@ use core::{
     fmt::{Debug, Display},
     marker::PhantomData,
     mem::transmute,
-    ops::Deref,
+    ops::{Deref, Index, Range, RangeBounds},
     ptr::copy_nonoverlapping,
 };
 
@@ -62,6 +62,10 @@ type CoveringInt = u128;
 type CoveringInt = u64;
 #[cfg(target_pointer_width = "16")]
 type CoveringInt = u32;
+
+// Size is MSB for little endian
+const SIZE_MASK: CoveringInt = (0xff as CoveringInt).rotate_right(8);
+const DATA_MASK: CoveringInt = !SIZE_MASK;
 
 // layout of &str is ptr, len
 // see `verify_layout` test
@@ -221,6 +225,83 @@ impl<'str_lt> ShortStr<'str_lt> {
             Variant::Facade(str_ref) => str_ref,
         }
     }
+
+    #[inline(always)]
+    pub unsafe fn index_str_unchecked(self, start: usize, end_exclusive: usize) -> Self {
+        // assumptions:
+        // `slice` is correctly ordered (no end < start) and sized (no end > self.len())
+        if self.len() == (end_exclusive - start) {
+            // if they are the same length its a nop
+            self
+        } else if self.is_str_ref() {
+            // if its &str facade then handle slice through the &str then convert to ShortStr
+            // safety:
+            // is_str_ref garantuees that self is actually a &str facade
+            let str_ref = unsafe { transmute::<_, &'static str>(self) };
+            Self::from_str(&str_ref[start..end_exclusive])
+        } else {
+            // if its a ShortStr we manipulate the bytes to the correct state
+            // NOTE: may be worth to handle this in the eq instead as its the only place where it
+            // matters currently, or create a function to handle process and use it where
+            // necessary. Slicing is common so using decreasing the length would be optimal for
+            // performance.
+            // safety:
+            // CoveringInt is ensured to have the same size as ShortStr/Str
+            // turn into bit representation for bit manipulation
+            // Ex: start = 1
+            //     end   = 3
+            //     int   = 0x03_EF_CD_AB
+            let int = unsafe { transmute::<_, CoveringInt>(self) };
+            // seperate length
+            // Ex: len = 0x03
+            let len = int.rotate_left(8) as i8;
+            // reduce by size difference
+            // Ex: len = 0x01 (3 - (3 - 1))
+            let len = len - (end_exclusive - start) as i8;
+            let int = if len == 0 {
+                // Ex: len = 0x80
+                // set to -1 if data is zero length
+                let len = -1;
+                // don't bother using the actual data
+                // Ex: len = 0x00_00_00_80 (cast)
+                //     len = 0x80_00_00_00 (rotate)
+                //     int = len
+                (len as CoveringInt).rotate_right(8)
+            } else {
+                // remove the length
+                // Ex: int  = 0x03_EF_CD_AB
+                //     mask = 0x00_FF_FF_FF
+                //     data = 0x00_EF_CD_AB
+                let data = int & DATA_MASK;
+                // mask the bytes to the left of slice.end (or right in integer representation)
+                // Ex: upper = 0x00_FF_FF_FF (mask)
+                //     upper = 0xFF_FF_00_00 (lsh end - 1 = 3 - 1 = 2 bytes)
+                //     upper = 0x00_00_FF_FF (invert)
+                let upper_data_mask = !(DATA_MASK /* or CoveringInt::MAX */ << (end_exclusive - 1) * 8);
+                // Ex: data = 0x00_EF_CD_AB
+                //     data = 0x00_00_CD_AB (mask)
+                let data = data & upper_data_mask;
+                // move over data between slice.start and slice.end to be at the start of data
+                // Ex: data = 0x00_00_CD_AB
+                //     data = 0x00_00_00_CD (rsh start = 1 bytes)
+                let data = data >> start * 8;
+
+                // meld back together
+                // Ex: data = 0x00_00_00_AB
+                //     len  = 0x01
+                //     len  = 0x00_00_00_01 (cast)
+                //     len  = 0x01_00_00_00 (rotate)
+                //     int  = 0x01_00_00_AB
+                data | (len as CoveringInt).rotate_right(8)
+            };
+            // turn back into correct data type
+            // safety:
+            // CoveringInt is garantueed to be equal size to ShortStr
+            // Using the masks above we garantuee we only meddle with specific parts
+            //
+            unsafe { transmute(int) }
+        }
+    }
 }
 
 impl<'str_lt> From<&'str_lt str> for ShortStr<'str_lt> {
@@ -265,5 +346,37 @@ impl PartialEq<ShortStr<'_>> for &str {
     #[inline(always)]
     fn eq(&self, other: &ShortStr) -> bool {
         other.eq(self)
+    }
+}
+
+impl<T: RangeBounds<usize>> Index<T> for ShortStr {
+    type Output = ShortStr;
+
+    fn index(&self, index: T) -> &Self::Output {
+        // If this isn't optimized away by monomorphism I'm going to shoot myself and the compiler
+        let realized_start = match index.start_bound() {
+            core::ops::Bound::Included(&x) => x + 1,
+            core::ops::Bound::Unbounded => self.len(),
+            _ => unreachable!(),
+        };
+
+        let realized_end_exclusive = match index.end_bound() {
+            core::ops::Bound::Included(&x) => x + 1,
+            core::ops::Bound::Excluded(&x) => x,
+            core::ops::Bound::Unbounded => self.len(),
+        };
+
+        assert!(
+            realized_start < realized_end_exclusive,
+            "expected slice on ShortStr to have {{start}} < {{end}}"
+        );
+        assert!(
+            realized_end_exclusive <= self.len(),
+            "expected slice on ShortStr to have {{end}} < {{length}}"
+        );
+
+        // safety:
+        // the slice bounds have been checked above
+        unsafe { self.index_str_unchecked(realized_start, realized_end_exclusive) }
     }
 }
