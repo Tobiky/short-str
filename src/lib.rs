@@ -8,14 +8,48 @@ use core::{
     ptr::copy_nonoverlapping,
 };
 
-#[cfg(debug_assertions)]
-use const_panic::concat_assert;
-
-#[cfg(debug_assertions)]
-const REPO_URL: &'static str = "https://github.com/Tobiky/short-str";
-
 #[cfg(test)]
 mod tests;
+
+#[cfg(debug_assertions)]
+const _: () = const {
+    use const_panic::concat_assert;
+
+    const REPO_URL: &'static str = "https://github.com/Tobiky/short-str";
+
+    // Little Endian
+    concat_assert!(
+        unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
+        "big endian architecture is currently unsupported for ShortStr's",
+    );
+
+    // &str Size
+    concat_assert!(
+        size_of::<&str>() == PTR_SIZE + LEN_SIZE,
+        "expected &str to have size ",
+        PTR_SIZE + LEN_SIZE,
+        "(",
+        PTR_SIZE,
+        " + ",
+        LEN_SIZE,
+        ") but got size ",
+        size_of::<&str>(),
+        ", please file an issue at",
+        REPO_URL
+    );
+
+    // core::any::type_name::<CoveringInt>(),
+    // CoveringInt size coverage
+    concat_assert!(
+        size_of::<CoveringInt>() == size_of::<ShortStr>(),
+        "expected CoveringInt to match byte size with ShortStr/ShStr (",
+        size_of::<CoveringInt>(),
+        " vs. ",
+        size_of::<ShortStr>(),
+        "), please file an issue at ",
+        REPO_URL
+    );
+};
 
 const PTR_SIZE: usize = size_of::<usize>();
 const LEN_SIZE: usize = size_of::<usize>();
@@ -28,39 +62,6 @@ type CoveringInt = u128;
 type CoveringInt = u64;
 #[cfg(target_pointer_width = "16")]
 type CoveringInt = u32;
-
-#[cfg(debug_assertions)]
-const _ASSERT_LITTLE_ENDIAN: () = concat_assert!(
-    unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
-    "big endian architecture is currently unsupported for ShortStr's",
-);
-
-#[cfg(debug_assertions)]
-const _ASSERT_STRING_SIZE: () = concat_assert!(
-    size_of::<&str>() == PTR_SIZE + LEN_SIZE,
-    "expected &str to have size ",
-    PTR_SIZE + LEN_SIZE,
-    "(",
-    PTR_SIZE,
-    " + ",
-    LEN_SIZE,
-    ") but got size ",
-    size_of::<&str>(),
-    ", please file an issue at",
-    REPO_URL
-);
-
-// core::any::type_name::<CoveringInt>(),
-#[cfg(debug_assertions)]
-const _ASSERT_COVERING_INT_SIZE: () = concat_assert!(
-    size_of::<CoveringInt>() == size_of::<ShortStr>(),
-    "expected CoveringInt to match byte size with ShortStr/ShStr (",
-    size_of::<CoveringInt>(),
-    " vs. ",
-    size_of::<ShortStr>(),
-    "), please file an issue at ",
-    REPO_URL
-);
 
 // layout of &str is ptr, len
 // see `verify_layout` test
