@@ -181,28 +181,28 @@ impl<'str_lt> ShortStr<'str_lt> {
     pub const fn from_str<'a>(value: &'a str) -> Self {
         // safety:
         // short_str is not &str, in which case its a ShortStr, and can thus be used as normal
-        let short_str = unsafe { transmute::<&str, ShortStr>(value) };
-        if !short_str.is_str() {
-            // its already a ShortStr
-            short_str
-        } else if value.len() == 0 {
-            // zero length special case
-            ShortStr::EMPTY
-        } else if value.len() <= INLINE_BYTE_SIZE {
-            // if it can fit into an inline str then convert
-            let mut data = [0; BYTE_SIZE];
-            // safety:
-            // value and data will never be overlapping and we cap the amount of bytes to copy by
-            // using len() which is already garantueed to fit into the data buffer as per the
-            // conditional
-            unsafe {
-                copy_nonoverlapping(value.as_ptr(), data.as_mut_ptr(), value.len());
+        // short_str is a &str, in which case ShortStr is just handled like a facade
+        let short_str = unsafe { Self::from_str_unchecked(value) };
+        match short_str.variant() {
+            Variant::Facade(_) if value.len() < INLINE_BYTE_SIZE => {
+                // if it can fit into an inline str then convert
+                let mut data = [0; BYTE_SIZE];
+                // safety:
+                // this is just copy_from_slice but that as const isn't stable yet
+                // - not same locations
+                // - amount of bytes to copy is garantueed < INLINE_BYTE_SIZE by condition
+                unsafe {
+                    copy_nonoverlapping(value.as_ptr(), data.as_mut_ptr(), value.len());
+                }
+                data[BYTE_SIZE - 1] = value.len() as u8;
+                ShortStr { data, _lt: PhantomData }
             }
-            data[BYTE_SIZE - 1] = value.len() as u8;
-            ShortStr { data, _lt: PhantomData }
-        } else {
-            // otherwise just leave alone (ShortStr facade for &str)
-            short_str
+            // It's already a proper ShortStr
+            // A: an inlined &str
+            // B: a &str facade
+            Variant::Facade(_) | Variant::Inlined(_) => short_str,
+            // Special empty case
+            Variant::Empty => ShortStr::EMPTY,
         }
     }
 
@@ -256,20 +256,8 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
 impl PartialEq<&str> for ShortStr<'_> {
     #[inline(always)]
     fn eq(&self, other: &&str) -> bool {
-        // safety:
-        // the is_str function just performs a byte check on the MSB to tell if the operation is
-        // actually safe to do, in which case it is used
-        let other_short_str = unsafe { transmute::<&str, ShortStr>(other) };
-        let other = if other_short_str.is_str() {
-            // other is actually a &str and not accidentally through Deref, coerce into ShortStr
-            ShortStr::from(*other)
-        } else {
-            // other is not actually a &str but a ShortStr, probably from deref, so we just use the transform
-            other_short_str
-        };
-
         // compare as scalar values through PartialEq<ShortStr>
-        *self == other
+        *self == ShortStr::from_str(other)
     }
 }
 
