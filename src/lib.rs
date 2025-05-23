@@ -4,7 +4,7 @@ use core::{
     fmt::{Debug, Display},
     marker::PhantomData,
     mem::transmute,
-    ops::{Deref, Index, Range, RangeBounds},
+    ops::{Deref, Index, RangeBounds},
     ptr::copy_nonoverlapping,
 };
 
@@ -349,14 +349,14 @@ impl PartialEq<ShortStr<'_>> for &str {
     }
 }
 
-impl<T: RangeBounds<usize>> Index<T> for ShortStr {
-    type Output = ShortStr;
+impl<'str_lt, T: RangeBounds<usize>> Index<T> for ShortStr<'str_lt> {
+    type Output = ShortStr<'str_lt>;
 
     fn index(&self, index: T) -> &Self::Output {
         // If this isn't optimized away by monomorphism I'm going to shoot myself and the compiler
         let realized_start = match index.start_bound() {
             core::ops::Bound::Included(&x) => x + 1,
-            core::ops::Bound::Unbounded => self.len(),
+            core::ops::Bound::Unbounded => 0,
             _ => unreachable!(),
         };
 
