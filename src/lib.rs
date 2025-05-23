@@ -84,6 +84,35 @@ impl Display for ShortStr<'_> {
     }
 }
 
+enum Variant<'str_lt> {
+    Inlined([u8; BYTE_SIZE]),
+    Facade(&'str_lt str),
+    Empty,
+}
+
+impl Variant<'_> {
+    #[inline(always)]
+    const fn from_short_str(value: ShortStr<'_>) -> Self {
+        if value.is_str() {
+            // Safety:
+            // is_str_ref garantuees that `value` is indeed a &str
+            let str_ref = unsafe { transmute(value) };
+            Variant::Facade(str_ref)
+        } else if value.is_empty_inlined() {
+            Variant::Empty
+        } else {
+            Variant::Inlined(value.data)
+        }
+    }
+}
+
+impl From<ShortStr<'_>> for Variant<'_> {
+    #[inline(always)]
+    fn from(value: ShortStr<'_>) -> Self {
+        Self::from_short_str(value)
+    }
+}
+
 /// inline str zero length flag
 // useful only with more flags
 // 2 * size_of::<usize>() - 1 = how many bytes that can be stored
@@ -100,19 +129,12 @@ impl<'str_lt> ShortStr<'str_lt> {
     };
 
     #[inline(always)]
-    pub const fn is_zero_len(self) -> bool {
-        // self.data[BYTE_SIZE - 1] & (MASK_INLINE_ZERO_LEN as u8) != 0
-        // just use signed bit as flag, no other flags atm
-        (self.data[BYTE_SIZE - 1] as i8).is_negative()
+    const fn variant(self) -> Variant<'str_lt> {
+        Variant::from_short_str(self)
     }
 
     #[inline(always)]
-    pub const fn is_str_ref(self) -> bool {
-        self.data[BYTE_SIZE - 1] == 0
-    }
-
-    #[inline(always)]
-    pub const fn len(self) -> usize {
+    const fn length_marker(self) -> u8 {
         // assumptions: little endian
 
         // ------------------------------------------------------------------------------
@@ -120,26 +142,25 @@ impl<'str_lt> ShortStr<'str_lt> {
         // as that would require more than e.g. 2^58 "directly" addressed bytes of memory
         // and therefore can be used for the inline str mode size, and as a marker.
         // ------------------------------------------------------------------------------
+        self.data[BYTE_SIZE - 1]
+    }
 
-        let inline_size = self.data[BYTE_SIZE - 1];
+    #[inline(always)]
+    const fn is_empty_inlined(self) -> bool {
+        (self.length_marker() as i8).is_negative()
+    }
 
-        // the str is inline with zero length flag set
-        if self.is_zero_len() {
-            0
-        }
-        // the str is inline with non-zero length
-        else if inline_size != 0 {
-            inline_size as usize
-        }
-        // the length byte is zero and no zero length flag is set; regular &str
-        else {
-            // safety:
-            // case A: ShStr is inlined str
-            // proof:  That case is handled above
-            // case B: ShStr is pointer and length
-            // proof:  Second half is length, as per tests::assumptions::*
-            let [_, len]: [usize; 2] = unsafe { transmute(self) };
-            len
+    #[inline(always)]
+    pub const fn is_str(self) -> bool {
+        self.length_marker() == 0
+    }
+
+    #[inline(always)]
+    pub const fn len(self) -> usize {
+        match self.variant() {
+            Variant::Inlined(data) => data[BYTE_SIZE - 1] as usize,
+            Variant::Facade(str_ref) => str_ref.len(),
+            Variant::Empty => 0,
         }
     }
 
@@ -151,29 +172,24 @@ impl<'str_lt> ShortStr<'str_lt> {
     // Example: ShortStr::from_str_unchecked("test") != ShortStr::from("test")
     pub const unsafe fn from_str_unchecked(other: &str) -> Self {
         // safety:
-        // see ShortStr::len(self)
-        // brief: last byte is 0 for regular &str and is used for &str detection so this
-        // transmutation will just go around the potential inline str savings in the worst case
+        // see ShortStr::length_marker(self)
+        // any &str is a valid instance of ShortStr due to the nature of the struct
         unsafe { transmute(other) }
     }
 
     #[inline(always)]
     pub const fn from_str<'a>(value: &'a str) -> Self {
-        // its already a ShortStr
         // safety:
-        // see ShortStr::len(self)
-        // brief: ShortStr is either fully a &str or only uses last byte to determine storage which
-        // is unrealistic to be used anyway
+        // short_str is not &str, in which case its a ShortStr, and can thus be used as normal
         let short_str = unsafe { transmute::<&str, ShortStr>(value) };
-        if !short_str.is_str_ref() {
+        if !short_str.is_str() {
+            // its already a ShortStr
             short_str
-        }
-        // zero length special case
-        else if value.len() == 0 {
+        } else if value.len() == 0 {
+            // zero length special case
             ShortStr::EMPTY
-        }
-        // if it can fit into an inline str then convert
-        else if value.len() <= INLINE_BYTE_SIZE {
+        } else if value.len() <= INLINE_BYTE_SIZE {
+            // if it can fit into an inline str then convert
             let mut data = [0; BYTE_SIZE];
             // safety:
             // value and data will never be overlapping and we cap the amount of bytes to copy by
@@ -184,15 +200,31 @@ impl<'str_lt> ShortStr<'str_lt> {
             }
             data[BYTE_SIZE - 1] = value.len() as u8;
             ShortStr { data, _lt: PhantomData }
-        }
-        // otherwise just leave alone (ShortStr facade for &str)
-        else {
+        } else {
+            // otherwise just leave alone (ShortStr facade for &str)
             short_str
+        }
+    }
+
+    #[inline(always)]
+    pub const fn as_str(self) -> &'str_lt str {
+        match self.variant() {
+            Variant::Inlined(_) | Variant::Empty => {
+                // safety:
+                // the ShortStr is an inline str, starting at the same place as data and with length
+                // we get from len
+                unsafe {
+                    let slice = core::slice::from_raw_parts(self.data.as_ptr(), self.len());
+                    core::str::from_utf8_unchecked(slice)
+                }
+            }
+            Variant::Facade(str_ref) => str_ref,
         }
     }
 }
 
 impl From<&str> for ShortStr<'_> {
+    #[inline(always)]
     fn from(value: &str) -> Self {
         Self::from_str(value)
     }
@@ -201,50 +233,39 @@ impl From<&str> for ShortStr<'_> {
 impl Deref for ShortStr<'_> {
     type Target = str;
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        // assumptions: little endian
-        if self.is_str_ref() {
-            // safety:
-            // see ShortStr::len(self)
-            // brief: last byte is unrealistic to be set, used for inline str size and flags 0
-            // being no flags or size and thus a regular &str
-            unsafe { transmute(*self) }
-        } else {
-            // safety:
-            // the ShortStr is an inline str, starting at the same place as data and with length
-            // we get from len
-            unsafe {
-                let slice = core::slice::from_raw_parts(self.data.as_ptr(), self.len());
-                core::str::from_utf8_unchecked(slice)
-            }
-        }
+        self.as_str()
     }
 }
 
 impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
+    #[inline(always)]
     fn eq(&self, other: &ShortStr) -> bool {
         // by using an int type that covers all bytes the compiler can determine what
         // the optimal bit-size to use on instruction level (best case its actually e.g. 128-bit
         // cmp instruction)
+        // in case from_le_bytes has overhead
         // safety:
         // we are only comparing bytes and conflicted size differences are disallowed by transmute
-        unsafe { transmute::<ShortStr, CoveringInt>(*self) == transmute::<ShortStr, CoveringInt>(*other) }
+        // unsafe { transmute::<ShortStr, CoveringInt>(*self) == transmute::<ShortStr, CoveringInt>(*other) }
+        CoveringInt::from_le_bytes(self.data) == CoveringInt::from_le_bytes(other.data)
     }
 }
 
 impl PartialEq<&str> for ShortStr<'_> {
+    #[inline(always)]
     fn eq(&self, other: &&str) -> bool {
         // safety:
-        // see ShortStr::len(self)
-        // brief: ShortStr is either fully a &str or only uses last byte to determine storage which
-        // is unrealistic to be used anyway
-        let other_str_ref = unsafe { transmute::<&str, ShortStr>(other) }.is_str_ref();
-        let other = if other_str_ref {
+        // the is_str function just performs a byte check on the MSB to tell if the operation is
+        // actually safe to do, in which case it is used
+        let other_short_str = unsafe { transmute::<&str, ShortStr>(other) };
+        let other = if other_short_str.is_str() {
             // other is actually a &str and not accidentally through Deref, coerce into ShortStr
             ShortStr::from(*other)
         } else {
-            // other is not actually a &str but a ShortStr, probably from deref, so we just transform
-            unsafe { transmute::<&str, ShortStr>(other) }
+            // other is not actually a &str but a ShortStr, probably from deref, so we just use the transform
+            other_short_str
         };
 
         // compare as scalar values through PartialEq<ShortStr>
@@ -253,6 +274,7 @@ impl PartialEq<&str> for ShortStr<'_> {
 }
 
 impl PartialEq<ShortStr<'_>> for &str {
+    #[inline(always)]
     fn eq(&self, other: &ShortStr) -> bool {
         other.eq(self)
     }

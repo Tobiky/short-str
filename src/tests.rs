@@ -46,7 +46,7 @@ fn long_str_facade() {
     let a = "1 2 3 4 5 6 7 8 9 10";
     let short = ShStr::from(a);
     assert!(
-        short.is_str_ref(),
+        short.is_str(),
         "expected long &str (length: {}) to become a ShortStr facade",
         a.len()
     );
@@ -63,7 +63,7 @@ fn short_str_inline() {
     let a = "hi";
     let short = ShStr::from(a);
     assert!(
-        !short.is_str_ref(),
+        !short.is_str(),
         "expected short &str (length: {}) to become inlined in ShortStr",
         a.len()
     );
@@ -81,9 +81,9 @@ fn short_str_inline() {
 fn empty_str_inline() {
     let a = "";
     let short = ShStr::from(a);
-    assert!(!short.is_str_ref(), "expected empty &str to become inlined in ShortStr");
+    assert!(!short.is_str(), "expected empty &str to become inlined in ShortStr");
     assert!(
-        short.is_zero_len(),
+        short.is_empty_inlined(),
         "expected empty &str to become empty ShortStr, but got one with length {}",
         short.len()
     );
