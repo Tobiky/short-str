@@ -4,7 +4,7 @@ use core::{
     fmt::{Debug, Display},
     marker::PhantomData,
     mem::transmute,
-    ops::Deref,
+    ops::{Deref, Range, RangeBounds},
     ptr::copy_nonoverlapping,
 };
 
@@ -63,6 +63,10 @@ type CoveringInt = u64;
 #[cfg(target_pointer_width = "16")]
 type CoveringInt = u32;
 
+// Size is MSB for little endian
+const SIZE_MASK: CoveringInt = (0xff as CoveringInt).rotate_right(8);
+const DATA_MASK: CoveringInt = !SIZE_MASK;
+
 // layout of &str is ptr, len
 // see `verify_layout` test
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
@@ -84,6 +88,7 @@ impl Display for ShortStr<'_> {
     }
 }
 
+#[derive(Debug)]
 enum Variant<'str_lt> {
     Inlined([u8; BYTE_SIZE]),
     Facade(&'str_lt str),
@@ -96,7 +101,7 @@ impl Variant<'_> {
         if value.is_str() {
             // Safety:
             // is_str_ref garantuees that `value` is indeed a &str
-            let str_ref = unsafe { transmute(value) };
+            let str_ref = unsafe { transmute::<ShortStr, &str>(value) };
             Variant::Facade(str_ref)
         } else if value.is_empty_inlined() {
             Variant::Empty
@@ -174,7 +179,7 @@ impl<'str_lt> ShortStr<'str_lt> {
         // safety:
         // see ShortStr::length_marker(self)
         // any &str is a valid instance of ShortStr due to the nature of the struct
-        unsafe { transmute(other) }
+        unsafe { transmute::<&str, ShortStr>(other) }
     }
 
     #[inline(always)]
@@ -184,8 +189,10 @@ impl<'str_lt> ShortStr<'str_lt> {
         // short_str is a &str, in which case ShortStr is just handled like a facade
         let short_str = unsafe { Self::from_str_unchecked(value) };
         match short_str.variant() {
-            Variant::Facade(facade) if facade.len() < INLINE_BYTE_SIZE => {
-                // if it can fit into an inline str then convert
+            // Special empty case
+            Variant::Facade(facade) if facade.is_empty() => ShortStr::EMPTY,
+            // It can fit into an inline str so convert
+            Variant::Facade(facade) if facade.len() <= INLINE_BYTE_SIZE => {
                 let mut data = [0; BYTE_SIZE];
                 // safety:
                 // this is just copy_from_slice but that as const isn't stable yet
@@ -199,10 +206,9 @@ impl<'str_lt> ShortStr<'str_lt> {
             }
             // It's already a proper ShortStr
             // A: an inlined &str
-            // B: a &str facade
-            Variant::Facade(_) | Variant::Inlined(_) => short_str,
-            // Special empty case
-            Variant::Empty => ShortStr::EMPTY,
+            // B: a &str facade with len > INLINE_BYTE_SIZE
+            // C: an empty inlined &str
+            Variant::Facade(_) | Variant::Inlined(_) | Variant::Empty => short_str,
         }
     }
 
@@ -220,6 +226,118 @@ impl<'str_lt> ShortStr<'str_lt> {
             }
             Variant::Facade(str_ref) => str_ref,
         }
+    }
+
+    pub unsafe fn slice_unchecked(self, slice: impl RangeBounds<usize>) -> Self {
+        let range = self.bounds_to_range(slice);
+
+        // assumptions:
+        // `slice` is correctly ordered (no end < start) and sized (no end > self.len())
+        match self.variant() {
+            // include these if statements here just cause its prettier :p
+            // if the slice is zero length then its just the empty case
+            _ if range.len() == 0 => Self::EMPTY,
+            // if they are the same length then its a nop
+            _ if self.len() == range.len() => self,
+            // &str facades should be handled by &str, then handle &str as ShortStr in case its
+            // short enough to inline
+            Variant::Facade(str_ref) => Self::from_str(&str_ref[range]),
+            // bit manipulate the inlined data
+            Variant::Inlined(data) => {
+                // if its a ShortStr we manipulate the bytes to the correct state
+                // NOTE: may be worth to handle this in the eq instead as its the only place where it
+                // matters currently, or create a function to handle process and use it where
+                // necessary. Slicing is common so using decreasing the length would be optimal for
+                // performance.
+                // safety:
+                // CoveringInt is ensured to have the same size as ShortStr/Str
+                // turn into bit representation for bit manipulation
+                // Ex: start = 1
+                //     end   = 3
+                //     int   = 0x03_EF_CD_AB
+                let int = unsafe { transmute::<[u8; BYTE_SIZE], CoveringInt>(data) };
+                // get new length
+                let len = range.len() as i8;
+                let int = if len == 0 {
+                    // Ex: len = 0x80
+                    // set to -1 if data is zero length
+                    let len = -1i8;
+                    // don't bother using the actual data
+                    // Ex: len = 0x00_00_00_80 (cast)
+                    //     len = 0x80_00_00_00 (rotate)
+                    //     int = len
+                    (len as CoveringInt).rotate_right(8)
+                } else {
+                    // remove the length
+                    // Ex: int  = 0x03_EF_CD_AB
+                    //     mask = 0x00_FF_FF_FF
+                    //     data = 0x00_EF_CD_AB
+                    let data = int & DATA_MASK;
+                    // mask the bytes to the left of slice.end (or right in integer representation)
+                    // Ex: upper = 0x00_FF_FF_FF (mask)
+                    //     upper = 0xFF_00_00_00 (lsh end = 3 bytes)
+                    //     upper = 0x00_FF_FF_FF (invert)
+                    let upper_data_mask = !(DATA_MASK /* or CoveringInt::MAX */ << range.end * 8);
+                    // Ex: data = 0x00_EF_CD_AB
+                    //     data = 0x00_00_CD_AB (mask)
+                    let data = data & upper_data_mask;
+                    // move over data between slice.start and slice.end to be at the start of data
+                    // Ex: data = 0x00_00_CD_AB
+                    //     data = 0x00_00_00_CD (rsh start = 1 bytes)
+                    let data = data >> range.start * 8;
+
+                    // meld back together
+                    // Ex: data = 0x00_00_00_AB
+                    //     len  = 0x01
+                    //     len  = 0x00_00_00_01 (cast)
+                    //     len  = 0x01_00_00_00 (rotate)
+                    //     int  = 0x01_00_00_AB
+                    data | (len as CoveringInt).rotate_right(8)
+                };
+                // turn back into correct data type
+                // safety:
+                // CoveringInt is garantueed to be equal size to ShortStr
+                // Using the masks above we garantuee we only meddle with specific parts
+                //
+                unsafe { transmute::<CoveringInt, ShortStr>(int) }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn bounds_to_range(self, bounds: impl RangeBounds<usize>) -> Range<usize> {
+        // If this isn't optimized away by monomorphism I'm going to shoot myself and the compiler
+        let realized_start = match bounds.start_bound() {
+            core::ops::Bound::Included(&x) => x,
+            core::ops::Bound::Unbounded => 0,
+            _ => unreachable!(),
+        };
+
+        let realized_end_exclusive = match bounds.end_bound() {
+            core::ops::Bound::Included(&x) => x + 1,
+            core::ops::Bound::Excluded(&x) => x,
+            core::ops::Bound::Unbounded => self.len(),
+        };
+
+        realized_start..realized_end_exclusive
+    }
+
+    pub fn slice(self, slice: impl RangeBounds<usize>) -> Self {
+        let range = self.bounds_to_range(slice);
+
+        assert!(
+            range.start <= range.end,
+            "expected slice on ShortStr to have {{start}} <= {{end}}"
+        );
+
+        assert!(
+            range.end <= self.len(),
+            "expected slice on ShortStr to have {{end}} < {{length}}"
+        );
+
+        // safety:
+        // slice bounds have been verified to be correct above
+        unsafe { self.slice_unchecked(range) }
     }
 }
 
@@ -245,10 +363,6 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
         // by using an int type that covers all bytes the compiler can determine what
         // the optimal bit-size to use on instruction level (best case its actually e.g. 128-bit
         // cmp instruction)
-        // in case from_le_bytes has overhead
-        // safety:
-        // we are only comparing bytes and conflicted size differences are disallowed by transmute
-        // unsafe { transmute::<ShortStr, CoveringInt>(*self) == transmute::<ShortStr, CoveringInt>(*other) }
         CoveringInt::from_ne_bytes(self.data) == CoveringInt::from_ne_bytes(other.data)
     }
 }
@@ -256,7 +370,7 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
 impl PartialEq<&str> for ShortStr<'_> {
     #[inline(always)]
     fn eq(&self, other: &&str) -> bool {
-        // compare as scalar values through PartialEq<ShortStr>
+        // compare as scalar values through PartialEq<ShortStr> for ShortStr
         *self == ShortStr::from_str(other)
     }
 }
@@ -264,6 +378,7 @@ impl PartialEq<&str> for ShortStr<'_> {
 impl PartialEq<ShortStr<'_>> for &str {
     #[inline(always)]
     fn eq(&self, other: &ShortStr) -> bool {
+        // reuse PartialEq<&str> for ShortStr
         other.eq(self)
     }
 }
