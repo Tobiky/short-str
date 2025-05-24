@@ -249,7 +249,7 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
         // safety:
         // we are only comparing bytes and conflicted size differences are disallowed by transmute
         // unsafe { transmute::<ShortStr, CoveringInt>(*self) == transmute::<ShortStr, CoveringInt>(*other) }
-        CoveringInt::from_le_bytes(self.data) == CoveringInt::from_le_bytes(other.data)
+        CoveringInt::from_ne_bytes(self.data) == CoveringInt::from_ne_bytes(other.data)
     }
 }
 
