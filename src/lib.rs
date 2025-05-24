@@ -272,9 +272,9 @@ impl<'str_lt> ShortStr<'str_lt> {
                     let data = int & DATA_MASK;
                     // mask the bytes to the left of slice.end (or right in integer representation)
                     // Ex: upper = 0x00_FF_FF_FF (mask)
-                    //     upper = 0xFF_FF_00_00 (lsh end - 1 = 3 - 1 = 2 bytes)
-                    //     upper = 0x00_00_FF_FF (invert)
-                    let upper_data_mask = !(DATA_MASK /* or CoveringInt::MAX */ << (range.end - 1) * 8);
+                    //     upper = 0xFF_00_00_00 (lsh end = 3 bytes)
+                    //     upper = 0x00_FF_FF_FF (invert)
+                    let upper_data_mask = !(DATA_MASK /* or CoveringInt::MAX */ << range.end * 8);
                     // Ex: data = 0x00_EF_CD_AB
                     //     data = 0x00_00_CD_AB (mask)
                     let data = data & upper_data_mask;
