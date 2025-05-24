@@ -360,10 +360,6 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
         // by using an int type that covers all bytes the compiler can determine what
         // the optimal bit-size to use on instruction level (best case its actually e.g. 128-bit
         // cmp instruction)
-        // in case from_le_bytes has overhead
-        // safety:
-        // we are only comparing bytes and conflicted size differences are disallowed by transmute
-        // unsafe { transmute::<ShortStr, CoveringInt>(*self) == transmute::<ShortStr, CoveringInt>(*other) }
         CoveringInt::from_ne_bytes(self.data) == CoveringInt::from_ne_bytes(other.data)
     }
 }
@@ -371,7 +367,7 @@ impl PartialEq<ShortStr<'_>> for ShortStr<'_> {
 impl PartialEq<&str> for ShortStr<'_> {
     #[inline(always)]
     fn eq(&self, other: &&str) -> bool {
-        // compare as scalar values through PartialEq<ShortStr>
+        // compare as scalar values through PartialEq<ShortStr> for ShortStr
         *self == ShortStr::from_str(other)
     }
 }
@@ -379,6 +375,7 @@ impl PartialEq<&str> for ShortStr<'_> {
 impl PartialEq<ShortStr<'_>> for &str {
     #[inline(always)]
     fn eq(&self, other: &ShortStr) -> bool {
+        // reuse PartialEq<&str> for ShortStr
         other.eq(self)
     }
 }
