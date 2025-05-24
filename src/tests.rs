@@ -1,6 +1,6 @@
 use core::mem::transmute;
 
-use crate::{BYTE_SIZE, ShStr, ShortStr};
+use crate::{ShStr, ShortStr, BYTE_SIZE};
 
 mod assumptions {
     use crate::{CoveringInt, ShStr};
@@ -232,8 +232,9 @@ fn descending_slice_panics() {
 
 #[test]
 fn inline_str_upper_slice_length() {
+    let range = 1..;
     let a = ShStr::from("abc");
-    let b = a.slice(1..);
+    let b = a.slice(range);
     str_assert_eq!(
         b.len(),
         a.len() - 1,
