@@ -301,3 +301,21 @@ fn inline_str_range_to_slice_value() {
         "expected slice on ShortStr to have the same value as &str using the same slice"
     );
 }
+
+#[test]
+fn inline_str_zero_len_slice_becomes_zero_len_shortstr() {
+    let range = 0..0;
+    let a = ShStr::from("abc");
+    let b = a.slice(range);
+    let empty = ShortStr::EMPTY;
+    str_assert!(
+        b.is_empty_inlined(),
+        b,
+        "expected zero length slice of ShortStr to result in zero length/empty/special ShortStr"
+    );
+    str_assert_eq!(
+        b,
+        empty,
+        "expected zero length slice of ShortStr equal to zero length/empty/special ShortStr"
+    );
+}
