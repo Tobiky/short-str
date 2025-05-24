@@ -184,7 +184,7 @@ impl<'str_lt> ShortStr<'str_lt> {
         // short_str is a &str, in which case ShortStr is just handled like a facade
         let short_str = unsafe { Self::from_str_unchecked(value) };
         match short_str.variant() {
-            Variant::Facade(_) if value.len() < INLINE_BYTE_SIZE => {
+            Variant::Facade(facade) if facade.len() < INLINE_BYTE_SIZE => {
                 // if it can fit into an inline str then convert
                 let mut data = [0; BYTE_SIZE];
                 // safety:
@@ -192,9 +192,9 @@ impl<'str_lt> ShortStr<'str_lt> {
                 // - not same locations
                 // - amount of bytes to copy is garantueed < INLINE_BYTE_SIZE by condition
                 unsafe {
-                    copy_nonoverlapping(value.as_ptr(), data.as_mut_ptr(), value.len());
+                    copy_nonoverlapping(facade.as_ptr(), data.as_mut_ptr(), facade.len());
                 }
-                data[BYTE_SIZE - 1] = value.len() as u8;
+                data[BYTE_SIZE - 1] = facade.len() as u8;
                 ShortStr { data, _lt: PhantomData }
             }
             // It's already a proper ShortStr
