@@ -47,7 +47,7 @@ macro_rules! str_assert {
             $condition,
             concat!(
                 $message,
-                "\ndata:   {__data_slice__:?}",
+                "\ndata:   {__data_slice__: >3?}",
                 "\n        ({__data_slice_length__} bytes)",
                 "\nmarker:  {__data_marker__:08b}",
                 "\n        ({__data_marker__})",
@@ -69,7 +69,7 @@ macro_rules! str_assert_eq {
             $b,
             concat!(
                 $message,
-                "\ndata:   {__data_slice__:?}",
+                "\ndata:   {__data_slice__: >3?}",
                 "\n        ({__data_slice_length__} bytes)",
                 "\nmarker:  {__data_marker__:08b}",
                 "\n        ({__data_marker__})",
@@ -86,12 +86,12 @@ macro_rules! str_assert_eq {
             $b,
             concat!(
                 $message,
-                "\ndata A:   {__data_slice_a__:?}",
+                "\ndata A:   {__data_slice_a__: >3?}",
                 "\n          ({__data_slice_length__} bytes)",
                 "\nmarker A:  {__data_marker_a__:08b}",
                 "\n          ({__data_marker_a__})",
                 "\n",
-                "\ndata B:   {__data_slice_b__:?}",
+                "\ndata B:   {__data_slice_b__: >3?}",
                 "\n          ({__data_slice_length__} bytes)",
                 "\nmarker B:  {__data_marker_b__:08b}",
                 "\n          ({__data_marker_b__})",
