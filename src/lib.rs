@@ -309,7 +309,7 @@ impl<'str_lt> ShortStr<'str_lt> {
     fn bounds_to_range(self, bounds: impl RangeBounds<usize>) -> Range<usize> {
         // If this isn't optimized away by monomorphism I'm going to shoot myself and the compiler
         let realized_start = match bounds.start_bound() {
-            core::ops::Bound::Included(&x) => x + 1,
+            core::ops::Bound::Included(&x) => x,
             core::ops::Bound::Unbounded => 0,
             _ => unreachable!(),
         };
