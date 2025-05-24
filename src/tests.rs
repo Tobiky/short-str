@@ -63,7 +63,7 @@ macro_rules! str_assert_eq {
     ($a:ident, $b:ident, $message:literal $(, $($x:expr),+)?) => {
         str_assert_eq!($a, $b, $a, $b, $message $(, $($x,)+)?);
     };
-    ($a:expr, $b:expr, $shstr:ident, $message:literal $(, $($x:expr),+)?) => {
+    ($a:expr, $b:expr, $short_str:ident, $message:literal $(, $($x:expr),+)?) => {
         assert_eq!(
             $a,
             $b,
@@ -87,14 +87,14 @@ macro_rules! str_assert_eq {
             concat!(
                 $message,
                 "\ndata A:   {__data_slice_a__:?}",
-                "\n        ({__data_slice_length__} bytes)",
+                "\n          ({__data_slice_length__} bytes)",
                 "\nmarker A:  {__data_marker_a__:08b}",
-                "\n        ({__data_marker_a__})",
+                "\n          ({__data_marker_a__})",
                 "\n",
                 "\ndata B:   {__data_slice_b__:?}",
-                "\n        ({__data_slice_length__} bytes)",
+                "\n          ({__data_slice_length__} bytes)",
                 "\nmarker B:  {__data_marker_b__:08b}",
-                "\n        ({__data_marker_b__})",
+                "\n          ({__data_marker_b__})",
             ),
             $($($x,)+)?
             __data_slice_length__ = BYTE_SIZE - 1,
@@ -110,12 +110,13 @@ macro_rules! str_assert_eq {
 fn long_str_facade() {
     let a = "1 2 3 4 5 6 7 8 9 10";
     let short = ShStr::from(a);
-    assert!(
+    str_assert!(
         short.is_str(),
+        short,
         "expected long &str (length: {}) to become a ShortStr facade",
         a.len()
     );
-    assert_eq!(a, short, "expected &str and its facade ShortStr to be equal");
+    str_assert_eq!(a, short, short, "expected &str and its facade ShortStr to be equal");
     #[rustfmt::skip]
     assert_eq!(
         unsafe { transmute::<&str, [u8; size_of::<&str>()]>(a) },
@@ -127,34 +128,47 @@ fn long_str_facade() {
 fn short_str_inline() {
     let a = "hi";
     let short = ShStr::from(a);
-    assert!(
+    str_assert!(
         !short.is_str(),
+        short,
         "expected short &str (length: {}) to become inlined in ShortStr",
         a.len()
     );
-    assert_eq!(
+    str_assert_eq!(
         short.len(),
         a.len(),
+        short,
         "expected inlined &str (ShortStr) to have same length as original ({} vs. {})",
         short.len(),
-        a.len(),
+        a.len()
     );
-    assert_eq!(a, short, "expected inlined &str (ShortStr) to be equal to its original")
+    str_assert_eq!(
+        a,
+        short,
+        short,
+        "expected inlined &str (ShortStr) to be equal to its original"
+    );
 }
 
 #[test]
 fn empty_str_inline() {
     let a = "";
     let short = ShStr::from(a);
-    assert!(!short.is_str(), "expected empty &str to become inlined in ShortStr");
-    assert!(
+    str_assert!(
+        !short.is_str(),
+        short,
+        "expected empty &str to become inlined in ShortStr"
+    );
+    str_assert!(
         short.is_empty_inlined(),
+        short,
         "expected empty &str to become empty ShortStr, but got one with length {}",
         short.len()
     );
-    assert_eq!(
+    let empty = ShStr::EMPTY;
+    str_assert_eq!(
         short,
-        ShStr::EMPTY,
+        empty,
         "expected converted empty &str to be equal to constant empty ShortStr"
     );
 }
@@ -162,6 +176,12 @@ fn empty_str_inline() {
 #[test]
 fn inline_str_upper_slice_length() {
     let a = ShStr::from("abc");
-    let b = a[1..];
-    assert_eq!(b.len(), a[1..].len());
+    let b = a.slice(1..);
+    str_assert_eq!(
+        b.len(),
+        a.len() - 1,
+        a,
+        b,
+        "expected smaller slice of ShortStr to be smaller than original"
+    );
 }
