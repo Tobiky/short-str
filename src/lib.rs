@@ -234,6 +234,9 @@ impl<'str_lt> ShortStr<'str_lt> {
         // assumptions:
         // `slice` is correctly ordered (no end < start) and sized (no end > self.len())
         match self.variant() {
+            // include these if statements here just cause its prettier :p
+            // if the slice is zero length then its just the empty case
+            _ if range.len() == 0 => Self::EMPTY,
             // if they are the same length then its a nop
             _ if self.len() == range.len() => self,
             // &str facades should be handled by &str, then handle &str as ShortStr in case its
@@ -323,8 +326,8 @@ impl<'str_lt> ShortStr<'str_lt> {
         let range = self.bounds_to_range(slice);
 
         assert!(
-            range.start < range.end,
-            "expected slice on ShortStr to have {{start}} < {{end}}"
+            range.start <= range.end,
+            "expected slice on ShortStr to have {{start}} <= {{end}}"
         );
 
         assert!(
