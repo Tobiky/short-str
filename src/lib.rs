@@ -88,6 +88,7 @@ impl Display for ShortStr<'_> {
     }
 }
 
+#[derive(Debug)]
 enum Variant<'str_lt> {
     Inlined([u8; BYTE_SIZE]),
     Facade(&'str_lt str),
@@ -188,7 +189,7 @@ impl<'str_lt> ShortStr<'str_lt> {
         // short_str is a &str, in which case ShortStr is just handled like a facade
         let short_str = unsafe { Self::from_str_unchecked(value) };
         match short_str.variant() {
-            Variant::Facade(facade) if facade.len() < INLINE_BYTE_SIZE => {
+            Variant::Facade(facade) if facade.len() <= INLINE_BYTE_SIZE => {
                 // if it can fit into an inline str then convert
                 let mut data = [0; BYTE_SIZE];
                 // safety:
@@ -203,7 +204,7 @@ impl<'str_lt> ShortStr<'str_lt> {
             }
             // It's already a proper ShortStr
             // A: an inlined &str
-            // B: a &str facade
+            // B: a &str facade with len > INLINE_BYTE_SIZE
             Variant::Facade(_) | Variant::Inlined(_) => short_str,
             // Special empty case
             Variant::Empty => ShortStr::EMPTY,
