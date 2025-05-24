@@ -182,7 +182,7 @@ fn range_from_into_range() {
 #[test]
 fn range_to_into_range() {
     let short = ShStr::from("abc");
-    assert_eq!(short.bounds_to_range(..1), 0..2);
+    assert_eq!(short.bounds_to_range(..1), 0..1);
 }
 
 #[test]
