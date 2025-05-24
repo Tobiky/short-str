@@ -223,9 +223,9 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 }
 
-impl From<&str> for ShortStr<'_> {
+impl<'str_lt> From<&'str_lt str> for ShortStr<'str_lt> {
     #[inline(always)]
-    fn from(value: &str) -> Self {
+    fn from(value: &'str_lt str) -> Self {
         Self::from_str(value)
     }
 }
