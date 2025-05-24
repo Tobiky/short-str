@@ -234,12 +234,20 @@ fn descending_slice_panics() {
 fn inline_str_upper_slice_length() {
     let range = 1..;
     let a = ShStr::from("abc");
-    let b = a.slice(range);
+    let b = a.slice(range.clone());
     str_assert_eq!(
         b.len(),
         a.len() - 1,
         a,
         b,
         "expected smaller slice of ShortStr to be smaller than original"
+    );
+
+    str_assert_eq!(
+        b.len(),
+        a.as_str()[range].len(),
+        a,
+        b,
+        "expected slice on ShortStr to have the same length as &str using the same slice"
     );
 }
