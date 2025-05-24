@@ -1,6 +1,6 @@
 use core::mem::transmute;
 
-use crate::{ShStr, ShortStr};
+use crate::{ShStr, ShortStr, BYTE_SIZE};
 
 mod assumptions {
     use crate::{CoveringInt, ShStr};
@@ -39,6 +39,71 @@ mod assumptions {
             SHSTR_SIZE
         )
     }
+}
+
+macro_rules! str_assert {
+    ($condition:expr, $short_str:ident, $message:literal $(, $($x:expr),+)?) => {
+        assert!(
+            $condition,
+            concat!(
+                $message,
+                "\ndata:   {__data_slice__:?}",
+                "\n        ({__data_slice_length__} bytes)",
+                "\nmarker:  {__data_marker__:08b}",
+                "\n        ({__data_marker__})",
+            ),
+            $($($x,)+)?
+            __data_slice__ = &$short_str.data[..BYTE_SIZE - 1],
+            __data_slice_length__ = BYTE_SIZE - 1,
+            __data_marker__ = $short_str.length_marker(),
+        );
+    };
+}
+macro_rules! str_assert_eq {
+    ($a:ident, $b:ident, $message:literal $(, $($x:expr),+)?) => {
+        str_assert_eq!($a, $b, $a, $b, $message $(, $($x,)+)?);
+    };
+    ($a:expr, $b:expr, $shstr:ident, $message:literal $(, $($x:expr),+)?) => {
+        assert_eq!(
+            $a,
+            $b,
+            concat!(
+                $message,
+                "\ndata:   {__data_slice__:?}",
+                "\n        ({__data_slice_length__} bytes)",
+                "\nmarker:  {__data_marker__:08b}",
+                "\n        ({__data_marker__})",
+            ),
+            $($($x,)+)?
+            __data_slice__ = &$short_str.data[..BYTE_SIZE - 1],
+            __data_slice_length__ = BYTE_SIZE - 1,
+            __data_marker__ = $short_str.length_marker(),
+        );
+    };
+    ($a:expr, $b:expr, $a_shstr:ident, $b_shstr:ident, $message:literal $(, $($x:tt),+)?) => {
+        assert_eq!(
+            $a,
+            $b,
+            concat!(
+                $message,
+                "\ndata A:   {__data_slice_a__:?}",
+                "\n        ({__data_slice_length__} bytes)",
+                "\nmarker A:  {__data_marker_a__:08b}",
+                "\n        ({__data_marker_a__})",
+                "\n",
+                "\ndata B:   {__data_slice_b__:?}",
+                "\n        ({__data_slice_length__} bytes)",
+                "\nmarker B:  {__data_marker_b__:08b}",
+                "\n        ({__data_marker_b__})",
+            ),
+            $($($x,)+)?
+            __data_slice_length__ = BYTE_SIZE - 1,
+            __data_slice_a__ = &$a_shstr.data[..BYTE_SIZE - 1],
+            __data_marker_a__ = $a_shstr.length_marker(),
+            __data_slice_b__ = &$b_shstr.data[..BYTE_SIZE - 1],
+            __data_marker_b__ = $b_shstr.length_marker(),
+        );
+    };
 }
 
 #[test]
