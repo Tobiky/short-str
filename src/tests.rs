@@ -174,6 +174,30 @@ fn empty_str_inline() {
 }
 
 #[test]
+fn range_from_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(1..), 1..3);
+}
+
+#[test]
+fn range_to_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(..1), 0..2);
+}
+
+#[test]
+fn range_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(0..1), 0..1);
+}
+
+#[test]
+fn range_full_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(..), 0..3);
+}
+
+#[test]
 fn inline_str_upper_slice_length() {
     let a = ShStr::from("abc");
     let b = a.slice(1..);
