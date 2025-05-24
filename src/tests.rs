@@ -210,6 +210,27 @@ fn range_inclusive_into_range() {
 }
 
 #[test]
+#[should_panic]
+fn oversized_slice_end_panics() {
+    let short = ShStr::from("abc");
+    let _ = short.slice(..4);
+}
+
+#[test]
+#[should_panic]
+fn oversized_slice_start_panics() {
+    let short = ShStr::from("abc");
+    let _ = short.slice(4..);
+}
+
+#[test]
+#[should_panic]
+fn descending_slice_panics() {
+    let short = ShStr::from("abc");
+    let _ = short.slice(4..1);
+}
+
+#[test]
 fn inline_str_upper_slice_length() {
     let a = ShStr::from("abc");
     let b = a.slice(1..);
