@@ -253,12 +253,8 @@ impl<'str_lt> ShortStr<'str_lt> {
                 //     end   = 3
                 //     int   = 0x03_EF_CD_AB
                 let int = unsafe { transmute::<_, CoveringInt>(data) };
-                // seperate length
-                // Ex: len = 0x03
-                let len = int.rotate_left(8) as i8;
-                // reduce by size difference
-                // Ex: len = 0x01 (3 - (3 - 1))
-                let len = len - range.len() as i8;
+                // get new length
+                let len = range.len() as i8;
                 let int = if len == 0 {
                     // Ex: len = 0x80
                     // set to -1 if data is zero length
