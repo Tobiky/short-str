@@ -265,3 +265,39 @@ fn inline_str_range_from_value() {
         "expected slice on ShortStr to have the same value as &str using the same slice"
     );
 }
+
+#[test]
+fn inline_str_range_to_length() {
+    let range = ..1;
+    let a = ShStr::from("abc");
+    let b = a.slice(range.clone());
+    str_assert_eq!(
+        b.len(),
+        a.len() - 2,
+        a,
+        b,
+        "expected smaller slice of ShortStr to be smaller than original"
+    );
+
+    str_assert_eq!(
+        b.len(),
+        a.as_str()[range].len(),
+        a,
+        b,
+        "expected slice on ShortStr to have the same length as &str using the same slice"
+    );
+}
+
+#[test]
+fn inline_str_range_to_value() {
+    let range = ..1;
+    let a = ShStr::from("abc");
+    let b = a.slice(range.clone());
+    str_assert_eq!(
+        b.as_str(),
+        &a.as_str()[range],
+        a,
+        b,
+        "expected slice on ShortStr to have the same value as &str using the same slice"
+    );
+}
