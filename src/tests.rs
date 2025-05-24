@@ -231,7 +231,7 @@ fn descending_slice_panics() {
 }
 
 #[test]
-fn inline_str_upper_slice_length() {
+fn inline_str_range_from_length() {
     let range = 1..;
     let a = ShStr::from("abc");
     let b = a.slice(range.clone());
@@ -253,7 +253,7 @@ fn inline_str_upper_slice_length() {
 }
 
 #[test]
-fn inline_str_upper_slice_value() {
+fn inline_str_range_from_value() {
     let range = 1..;
     let a = ShStr::from("abc");
     let b = a.slice(range.clone());
