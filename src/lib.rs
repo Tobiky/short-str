@@ -178,7 +178,7 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 
     #[inline(always)]
-    pub const fn from_str<'a>(value: &'a str) -> Self {
+    pub const fn from_str(value: &'str_lt str) -> Self {
         // safety:
         // short_str is not &str, in which case its a ShortStr, and can thus be used as normal
         // short_str is a &str, in which case ShortStr is just handled like a facade
