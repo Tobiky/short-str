@@ -4,7 +4,7 @@ use core::{
     fmt::{Debug, Display},
     marker::PhantomData,
     mem::transmute,
-    ops::{Deref, Index, Range, RangeBounds},
+    ops::{Deref, Range, RangeBounds},
     ptr::copy_nonoverlapping,
 };
 
@@ -101,7 +101,7 @@ impl Variant<'_> {
         if value.is_str() {
             // Safety:
             // is_str_ref garantuees that `value` is indeed a &str
-            let str_ref = unsafe { transmute(value) };
+            let str_ref = unsafe { transmute::<ShortStr, &str>(value) };
             Variant::Facade(str_ref)
         } else if value.is_empty_inlined() {
             Variant::Empty
@@ -179,7 +179,7 @@ impl<'str_lt> ShortStr<'str_lt> {
         // safety:
         // see ShortStr::length_marker(self)
         // any &str is a valid instance of ShortStr due to the nature of the struct
-        unsafe { transmute(other) }
+        unsafe { transmute::<&str, ShortStr>(other) }
     }
 
     #[inline(always)]
@@ -252,7 +252,7 @@ impl<'str_lt> ShortStr<'str_lt> {
                 // Ex: start = 1
                 //     end   = 3
                 //     int   = 0x03_EF_CD_AB
-                let int = unsafe { transmute::<_, CoveringInt>(data) };
+                let int = unsafe { transmute::<[u8; BYTE_SIZE], CoveringInt>(data) };
                 // get new length
                 let len = range.len() as i8;
                 let int = if len == 0 {
@@ -296,7 +296,7 @@ impl<'str_lt> ShortStr<'str_lt> {
                 // CoveringInt is garantueed to be equal size to ShortStr
                 // Using the masks above we garantuee we only meddle with specific parts
                 //
-                unsafe { transmute(int) }
+                unsafe { transmute::<CoveringInt, ShortStr>(int) }
             }
             _ => unreachable!(),
         }

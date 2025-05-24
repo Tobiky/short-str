@@ -1,6 +1,6 @@
 use core::mem::transmute;
 
-use crate::{ShStr, ShortStr, BYTE_SIZE};
+use crate::{BYTE_SIZE, ShStr, ShortStr};
 
 mod assumptions {
     use crate::{CoveringInt, ShStr};
