@@ -251,3 +251,17 @@ fn inline_str_upper_slice_length() {
         "expected slice on ShortStr to have the same length as &str using the same slice"
     );
 }
+
+#[test]
+fn inline_str_upper_slice_value() {
+    let range = 1..;
+    let a = ShStr::from("abc");
+    let b = a.slice(range.clone());
+    str_assert_eq!(
+        b.as_str(),
+        &a.as_str()[range],
+        a,
+        b,
+        "expected slice on ShortStr to have the same value as &str using the same slice"
+    );
+}
