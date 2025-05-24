@@ -2,6 +2,7 @@
 name = "short-str"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85.1"
 
 [dependencies]
 const_panic = { version = "0.2.12", default-features = false }
