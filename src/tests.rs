@@ -198,6 +198,18 @@ fn range_full_into_range() {
 }
 
 #[test]
+fn range_to_inclusive_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(..=3), 0..4);
+}
+
+#[test]
+fn range_inclusive_into_range() {
+    let short = ShStr::from("abc");
+    assert_eq!(short.bounds_to_range(1..=3), 1..4);
+}
+
+#[test]
 fn inline_str_upper_slice_length() {
     let a = ShStr::from("abc");
     let b = a.slice(1..);
