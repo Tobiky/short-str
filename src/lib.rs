@@ -189,8 +189,10 @@ impl<'str_lt> ShortStr<'str_lt> {
         // short_str is a &str, in which case ShortStr is just handled like a facade
         let short_str = unsafe { Self::from_str_unchecked(value) };
         match short_str.variant() {
+            // Special empty case
+            Variant::Facade(facade) if facade.is_empty() => ShortStr::EMPTY,
+            // It can fit into an inline str so convert
             Variant::Facade(facade) if facade.len() <= INLINE_BYTE_SIZE => {
-                // if it can fit into an inline str then convert
                 let mut data = [0; BYTE_SIZE];
                 // safety:
                 // this is just copy_from_slice but that as const isn't stable yet
@@ -205,9 +207,8 @@ impl<'str_lt> ShortStr<'str_lt> {
             // It's already a proper ShortStr
             // A: an inlined &str
             // B: a &str facade with len > INLINE_BYTE_SIZE
-            Variant::Facade(_) | Variant::Inlined(_) => short_str,
-            // Special empty case
-            Variant::Empty => ShortStr::EMPTY,
+            // C: an empty inlined &str
+            Variant::Facade(_) | Variant::Inlined(_) | Variant::Empty => short_str,
         }
     }
 
