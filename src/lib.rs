@@ -137,6 +137,15 @@ const DATA_MASK: CoveringInt = !SIZE_MASK;
 // layout of &str is ptr, len
 // see `verify_layout` test
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
+/// An almost drop-in replacement for [`&str`]. See crate level documentation for more information.
+///
+/// # Examples
+/// ```
+/// use short_str::ShortStr;
+///
+/// let inlined = ShortStr::from("hello");
+/// let not_inlined = ShortStr::from("stronger, faster, better, morer?");
+/// ```
 pub struct ShortStr<'str_lt> {
     _lt: PhantomData<&'str_lt Infallible>,
     data: [u8; BYTE_SIZE],
