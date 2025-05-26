@@ -1,3 +1,68 @@
+//! `short-str` is library aimed at being a full, drop-in, replacement for [`&str`] ontop of
+//! inlining strings of sufficiently small sizes. In other words, no possibility for heap
+//! allocation and optimism for optimized stack allocation.
+//!
+//! # Quickstart
+//! Your primary entrypoint to usage is [`ShortStr::from`], which provides the garantuees
+//! and implementations listed in the [Features and Guarantuees
+//! section][#features-and-guarantuees].
+//!
+//! Equality between `ShortStr` and `&str`:
+//! ```rust
+//! use short_str::ShortStr;
+//!
+//! let your_string = "this is a pretty long string, huh?";
+//! let my_string = ShortStr::from(your_string);
+//! assert_eq!(my_string.is_str(), true);
+//! assert_eq!(your_string, my_string);
+//! let your_string_again = my_string.as_str();
+//! assert_eq!(your_string, your_string_again);
+//! ```
+//!
+//! Even when inlined (this example for 64-bit machines):
+//! ```
+//! use short_str::ShortStr;
+//!
+//! let short_string = "hello!";
+//! let inlined = ShortStr::from(short_string);
+//! assert_eq!(inlined.is_str(), false);
+//! assert_eq!(inlined, short_string);
+//! ```
+//!
+//! or between inlined and references:
+//! ```
+//! use short_str::ShortStr;
+//!
+//! let your_string = "this is a pretty long string, huh?";
+//! let my_string = ShortStr::from(your_string);
+//!
+//! let short_string = "hello!";
+//! let inlined = ShortStr::from(short_string);
+//!
+//! assert_ne!(your_string, short_string);
+//! assert_ne!(your_string, inlined);
+//!
+//! assert_ne!(my_string, short_string);
+//! assert_ne!(my_string, inlined);
+//! ```
+//!
+//! # Features and Guarantuees
+//! - Size
+//!     - Equal size to `&str`
+//!     - Little endian size optimization (Use MSG of length portion, statically asserted)
+//! - Safety
+//!     - Assumptions are asserted at compile-time
+//!     - Immutable data
+//! - Usage/Ergonomics
+//!     - Slicing
+//!         - Dedicated slicing functions
+//!     - `ShortStr` and `&str` comparison
+//!         - Scalar comparison between `ShortStr`
+//!         - Comparison on `&str` via cast (Copies on inlinable `&str`)
+//!     - `Deref` to `str`
+//!
+//! More details may be found at the [repository][https://github.com/Tobiky/short-str].
+
 #![no_std]
 use core::{
     convert::Infallible,

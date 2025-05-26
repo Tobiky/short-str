@@ -35,5 +35,6 @@ Features, guarantuees, and goals are pretty much synonymous for this crate so th
     - [x] `ShortStr` and `&str` comparison
         - [x] Scalar comparison between `ShortStr`
         - [x] Comparison on `&str` via cast (Copies on inlinable `&str`)
+    - [x] `Deref` to `str`
     - [ ] Inlined optimized `Hash` impl
     - [ ] Inlined optimized `Ord` impl
