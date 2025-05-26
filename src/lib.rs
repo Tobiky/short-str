@@ -95,13 +95,13 @@ enum Variant<'str_lt> {
     Empty,
 }
 
-impl Variant<'_> {
+impl<'str_lt> Variant<'str_lt> {
     #[inline(always)]
-    const fn from_short_str(value: ShortStr<'_>) -> Self {
+    const fn from_short_str(value: ShortStr<'str_lt>) -> Self {
         if value.is_str() {
             // Safety:
             // is_str_ref garantuees that `value` is indeed a &str
-            let str_ref = unsafe { transmute::<ShortStr, &str>(value) };
+            let str_ref = unsafe { transmute::<ShortStr, &'str_lt str>(value) };
             Variant::Facade(str_ref)
         } else if value.is_empty_inlined() {
             Variant::Empty
@@ -111,9 +111,9 @@ impl Variant<'_> {
     }
 }
 
-impl From<ShortStr<'_>> for Variant<'_> {
+impl<'str_lt> From<ShortStr<'str_lt>> for Variant<'str_lt> {
     #[inline(always)]
-    fn from(value: ShortStr<'_>) -> Self {
+    fn from(value: ShortStr<'str_lt>) -> Self {
         Self::from_short_str(value)
     }
 }
@@ -434,7 +434,7 @@ impl<'str_lt> ShortStr<'str_lt> {
                 // Ex: start = 1
                 //     end   = 3
                 //     int   = 0x03_EF_CD_AB
-                let int = unsafe { transmute::<[u8; BYTE_SIZE], CoveringInt>(data) };
+                let int = CoveringInt::from_ne_bytes(data);
                 // get new length
                 let len = range.len() as i8;
                 let int = if len == 0 {
