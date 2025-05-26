@@ -103,6 +103,8 @@ impl<'str_lt> Variant<'str_lt> {
         if value.is_str() {
             // Safety:
             // is_str_ref garantuees that `value` is indeed a &str
+            // ERROR(miri): miri cannot figure out that this is an actual &'str_lt (since it would
+            // have been constructed from that, necessarily)
             let str_ref = unsafe { transmute::<ShortStr, &'str_lt str>(value) };
             Variant::Facade(str_ref)
         } else if value.is_empty_inlined() {
