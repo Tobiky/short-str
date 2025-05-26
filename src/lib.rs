@@ -1,3 +1,68 @@
+//! `short-str` is library aimed at being a full, drop-in, replacement for [`&str`] ontop of
+//! inlining strings of sufficiently small sizes. In other words, no possibility for heap
+//! allocation and optimism for optimized stack allocation.
+//!
+//! # Quickstart
+//! Your primary entrypoint to usage is [`ShortStr::from`], which provides the garantuees
+//! and implementations listed in the [Features and Guarantuees
+//! section][#features-and-guarantuees].
+//!
+//! Equality between `ShortStr` and `&str`:
+//! ```rust
+//! use short_str::ShortStr;
+//!
+//! let your_string = "this is a pretty long string, huh?";
+//! let my_string = ShortStr::from(your_string);
+//! assert_eq!(my_string.is_str(), true);
+//! assert_eq!(your_string, my_string);
+//! let your_string_again = my_string.as_str();
+//! assert_eq!(your_string, your_string_again);
+//! ```
+//!
+//! Even when inlined (this example for 64-bit machines):
+//! ```
+//! use short_str::ShortStr;
+//!
+//! let short_string = "hello!";
+//! let inlined = ShortStr::from(short_string);
+//! assert_eq!(inlined.is_str(), false);
+//! assert_eq!(inlined, short_string);
+//! ```
+//!
+//! or between inlined and references:
+//! ```
+//! use short_str::ShortStr;
+//!
+//! let your_string = "this is a pretty long string, huh?";
+//! let my_string = ShortStr::from(your_string);
+//!
+//! let short_string = "hello!";
+//! let inlined = ShortStr::from(short_string);
+//!
+//! assert_ne!(your_string, short_string);
+//! assert_ne!(your_string, inlined);
+//!
+//! assert_ne!(my_string, short_string);
+//! assert_ne!(my_string, inlined);
+//! ```
+//!
+//! # Features and Guarantuees
+//! - Size
+//!     - Equal size to `&str`
+//!     - Little endian size optimization (Use MSG of length portion, statically asserted)
+//! - Safety
+//!     - Assumptions are asserted at compile-time
+//!     - Immutable data
+//! - Usage/Ergonomics
+//!     - Slicing
+//!         - Dedicated slicing functions
+//!     - `ShortStr` and `&str` comparison
+//!         - Scalar comparison between `ShortStr`
+//!         - Comparison on `&str` via cast (Copies on inlinable `&str`)
+//!     - `Deref` to `str`
+//!
+//! More details may be found at the [repository][https://github.com/Tobiky/short-str].
+
 #![no_std]
 use core::{
     convert::Infallible,
@@ -18,6 +83,8 @@ const _: () = const {
     const REPO_URL: &'static str = "https://github.com/Tobiky/short-str";
 
     // Little Endian
+    // Not supported by miri and #[ignore] is only on functions
+    #[cfg(not(miri))]
     concat_assert!(
         unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
         "big endian architecture is currently unsupported for ShortStr's",
@@ -70,6 +137,15 @@ const DATA_MASK: CoveringInt = !SIZE_MASK;
 // layout of &str is ptr, len
 // see `verify_layout` test
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
+/// An almost drop-in replacement for [`&str`]. See crate level documentation for more information.
+///
+/// # Examples
+/// ```
+/// use short_str::ShortStr;
+///
+/// let inlined = ShortStr::from("hello");
+/// let not_inlined = ShortStr::from("stronger, faster, better, morer?");
+/// ```
 pub struct ShortStr<'str_lt> {
     _lt: PhantomData<&'str_lt Infallible>,
     data: [u8; BYTE_SIZE],
@@ -78,13 +154,13 @@ pub type ShStr<'str_lt> = ShortStr<'str_lt>;
 
 impl Debug for ShortStr<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self)
+        write!(f, "{:?}", self.as_str())
     }
 }
 
 impl Display for ShortStr<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self)
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -95,13 +171,15 @@ enum Variant<'str_lt> {
     Empty,
 }
 
-impl Variant<'_> {
+impl<'str_lt> Variant<'str_lt> {
     #[inline(always)]
-    const fn from_short_str(value: ShortStr<'_>) -> Self {
+    const fn from_short_str(value: ShortStr<'str_lt>) -> Self {
         if value.is_str() {
             // Safety:
             // is_str_ref garantuees that `value` is indeed a &str
-            let str_ref = unsafe { transmute::<ShortStr, &str>(value) };
+            // ERROR(miri): miri cannot figure out that this is an actual &'str_lt (since it would
+            // have been constructed from that, necessarily)
+            let str_ref = unsafe { transmute::<ShortStr, &'str_lt str>(value) };
             Variant::Facade(str_ref)
         } else if value.is_empty_inlined() {
             Variant::Empty
@@ -111,9 +189,9 @@ impl Variant<'_> {
     }
 }
 
-impl From<ShortStr<'_>> for Variant<'_> {
+impl<'str_lt> From<ShortStr<'str_lt>> for Variant<'str_lt> {
     #[inline(always)]
-    fn from(value: ShortStr<'_>) -> Self {
+    fn from(value: ShortStr<'str_lt>) -> Self {
         Self::from_short_str(value)
     }
 }
@@ -127,6 +205,15 @@ impl From<ShortStr<'_>> for Variant<'_> {
 // const MASK_INLINE_ZERO_LEN: usize = 1 << usize::ilog2(BYTE_SIZE);
 
 impl<'str_lt> ShortStr<'str_lt> {
+    /// An empty inlined [`ShortStr`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// assert_eq!(ShortStr::EMPTY, ShortStr::from(""));
+    /// ```
     pub const EMPTY: ShortStr<'str_lt> = const {
         let mut data = [0; BYTE_SIZE];
         data[BYTE_SIZE - 1] = -1i8 as u8;
@@ -134,11 +221,35 @@ impl<'str_lt> ShortStr<'str_lt> {
     };
 
     #[inline(always)]
+    /// Returns the [`Variant`] of the `self` (Empty, Inlined, or Facade).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("im tired of writing these strings");
+    /// match string {
+    ///     Variant::Facade(string) => println!("{}", string);
+    ///     Variant::Inlined(_data) => unreachable!(),
+    ///     Variant::Empty => unreachable!(),
+    /// }
+    /// ```
     const fn variant(self) -> Variant<'str_lt> {
         Variant::from_short_str(self)
     }
 
     #[inline(always)]
+    /// Returns the byte, or masked byte in smaller cases, of the marker containing the length.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("hello");
+    /// assert_eq!(string.length_marker, "hello".len());
+    /// ```
     const fn length_marker(self) -> u8 {
         // assumptions: little endian
 
@@ -151,16 +262,51 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 
     #[inline(always)]
+    /// Returns if the [`ShortStr`] is an empty inlined [`&str`] or not.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("i am too big to fit inside the structure");
+    /// assert_eq!(string.is_empty_inlined(), false);
+    /// let string = ShortStr::from("i am small");
+    /// assert_eq!(string.is_empty_inlined(), false);
+    /// let string = ShortStr::from("");
+    /// assert_eq!(string.is_empty_inlined(), true);
+    /// let string = ShortStr::EMPTY;
+    /// assert_eq!(string.is_empty_inlined(), true);
+    /// ```
     const fn is_empty_inlined(self) -> bool {
         (self.length_marker() as i8).is_negative()
     }
 
     #[inline(always)]
+    /// Returns if the [`ShortStr`] is a [`&str`] facade (not inlined) or not.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let not_inlined = ShortStr::from("i am too big to fit inside the structure");
+    /// assert_eq!(not_inlined.is_str(), true);
+    /// let inlined = ShortStr::from("i am small");
+    /// assert_eq!(inlined.is_str(), false);
+    /// ```
     pub const fn is_str(self) -> bool {
         self.length_marker() == 0
     }
 
     #[inline(always)]
+    /// Returns the number of bytes in the [`ShortStr`].
+    ///
+    /// # Examples
+    /// ```
+    /// let a = [1, 2, 3];
+    /// assert_eq!(a.len(), 3);
+    /// ```
     pub const fn len(self) -> usize {
         match self.variant() {
             Variant::Inlined(data) => data[BYTE_SIZE - 1] as usize,
@@ -170,11 +316,28 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 
     #[inline(always)]
-    // unsafety:
-    // while the transmutation is not UB for any &str, the representation might have differed if
-    // ShortStr::from had been used (e.g. <= 15 bytes long str, on 64-bit platforms) which would
-    // cause the Eq operation to fail even if they are the same
-    // Example: ShortStr::from_str_unchecked("test") != ShortStr::from("test")
+    /// Produce a [`ShortStr`] from a `&str` without checking if it should be Inlined or not. The
+    /// function is marked unsafe for the assumptions made on correct convertion relied upon for
+    /// other functions.
+    ///
+    /// The representation might have differed if [`ShortStr::from`] had been used (e.g. <= 15
+    /// bytes long str, on 64-bit platforms) which would cause the [`Eq`] and [`PartialEq`]
+    /// operations to fail even if they represent the same value.
+    ///
+    /// For example
+    /// ```should_panic
+    /// use short_str::ShortStr;
+    ///
+    /// assert_eq!(unsafe { ShortStr::from_str_unchecked("test") }, ShortStr::from("test"));
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let string = "i am not inlined";
+    /// assert_eq!(unsafe { ShortStr::from_str_unchecked(string) }, ShortStr::from(string));
+    /// ```
     pub const unsafe fn from_str_unchecked(other: &str) -> Self {
         // safety:
         // see ShortStr::length_marker(self)
@@ -183,6 +346,19 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 
     #[inline(always)]
+    /// Produce a [`ShortStr`] from a [`&str`], gaurantueeing that any [`&str`] from the
+    /// [`ShortStr`] will have the same lifetime.
+    ///
+    /// # Examples
+    /// These examples assume a little endian 64-bit architecture.
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let inlined = ShortStr::from("hello, world!");
+    /// assert_eq!(inlined.is_str(), false);
+    /// let not_inlined = ShortStr::from("hello, world! i am big");
+    /// assert_eq!(not_inlined.is_str(), true);
+    /// ```
     pub const fn from_str(value: &'str_lt str) -> Self {
         // safety:
         // short_str is not &str, in which case its a ShortStr, and can thus be used as normal
@@ -213,7 +389,24 @@ impl<'str_lt> ShortStr<'str_lt> {
     }
 
     #[inline(always)]
-    pub const fn as_str(self) -> &'str_lt str {
+    /// View the [`ShortStr`] as a [`&str`]. There are two cases:
+    /// - (not inlined) [`ShortStr`] is a facade for [`&str`]: the original `&str` is returned with
+    ///   its original lifetime.
+    /// - (inlined) [`ShortStr`] is true: a new [`&str`] is constructed to point at `self` with the
+    ///   appropriate length.
+    ///
+    /// # Examples
+    /// These examples assume a little endian 64-bit architecture.
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let string    = "this is not inlined";
+    /// let short_str = ShortStr::from(string);
+    /// assert_eq!(short_str.is_str(), true);
+    /// let re_string = short_str.as_str();
+    /// assert_eq!(string, short_str);
+    /// ```
+    pub const fn as_str(&self) -> &'str_lt str {
         match self.variant() {
             Variant::Inlined(_) | Variant::Empty => {
                 // safety:
@@ -228,6 +421,70 @@ impl<'str_lt> ShortStr<'str_lt> {
         }
     }
 
+    /// Performs the slicing operation using `slice` on `self` without checking for logical
+    /// consistencies between `slice` and `self`. See [`ShortStr::slice`] for the checked variant.
+    /// There are four cases:
+    /// - `slice.len() == 0`: a special empty [`ShortStr`] is produced
+    /// - `slice.len() == self.len()`: just produces self
+    /// - `self.is_str()` (plain [`&str`]): perform slice using native [`&str`] slicing into
+    ///   [`ShortStr::from`]
+    /// - `!self.is_str()` (inlined [`&str`]): bitbash the bytes into the correct sliced version,
+    ///   for which an incorrect `slice` is UB.
+    ///
+    /// # Panics
+    /// If `slice` is illogical (descending order or out of bounds values) or it splits graphemes,
+    /// the operation only panics for the case of when its representing an actual [`&str`] (i.e.
+    /// not inlined). See [`&str`] for more details (particularly on splitting graphemes).
+    ///
+    /// To be clear; splitting graphemes inside the inlined [`&str`] does currently not produce a
+    /// panic.
+    ///
+    /// # Examples
+    /// These examples assume a little endian 64-bit architecture.
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("hello, world!");
+    /// let slice  = unsafe { string.slice_unchecked(..5) };
+    /// assert_eq!(slice, "hello");
+    /// ```
+    ///
+    /// Attempting to use an incorrect slice on a [`&str`] facade results in a panic from the
+    /// [`&str`]:
+    /// ```should_panic
+    /// use short_str::ShortStr;
+    ///
+    /// let not_inlined = ShortStr::from("hello, world! yet another inlined string");
+    /// let slice       = unsafe { not_inlined.slice_unchecked(..not_inlined.len() + 1) };
+    /// ```
+    /// or splitting a grapheme:
+    /// ```should_panic
+    /// use short_str::ShortStr;
+    ///
+    /// let not_inlined = ShortStr::from("this string contains a unicode symbol 🈁s");
+    /// let slice       = unsafe { not_inlined.slice_unchecked(..not_inlined.len() - 2) };
+    /// ```
+    ///
+    /// But the same kind of operation on an inlined [`&str`] does not panic as it just performs
+    /// bit operations using the range bounds as values:
+    /// ```
+    /// use short_str::ShortStr;
+    ///
+    /// let inlined = ShortStr::from("hello, world!");
+    /// assert_eq!(inlined.len(), 13);
+    /// let slice   = unsafe { inlined.slice_unchecked(..inlined.len() + 1) };
+    /// assert_eq!(slice.len(), 14);
+    /// assert_eq!(slice, "hello, world!\0");
+    /// ```
+    /// Neither does it panic on splitting graphemes, though this will panic since its invalid
+    /// UTF-8 (the equality also fails but you get the point):
+    /// ```should_panic
+    /// use short_str::ShortStr;
+    ///
+    /// let inlined = ShortStr::from("unicode 🈁s");
+    /// let slice   = unsafe { inlined.slice_unchecked(..inlined.len() - 2) };
+    /// assert_eq!(slice, "unicode �");
+    /// ```
     pub unsafe fn slice_unchecked(self, slice: impl RangeBounds<usize>) -> Self {
         let range = self.bounds_to_range(slice);
 
@@ -255,7 +512,7 @@ impl<'str_lt> ShortStr<'str_lt> {
                 // Ex: start = 1
                 //     end   = 3
                 //     int   = 0x03_EF_CD_AB
-                let int = unsafe { transmute::<[u8; BYTE_SIZE], CoveringInt>(data) };
+                let int = CoveringInt::from_ne_bytes(data);
                 // get new length
                 let len = range.len() as i8;
                 let int = if len == 0 {
@@ -305,6 +562,21 @@ impl<'str_lt> ShortStr<'str_lt> {
         }
     }
 
+    /// Converts the range `bounds` to an actual range based on `self` as a context.
+    /// The RangeBounds trait is implemented for all range operators (`..`, `..N`, etc) but any
+    /// other value that does support the trait is also welcome.
+    ///
+    /// Does not perform any checks on the resulting range.
+    ///
+    /// # Examples
+    /// These examples assume a little endian 64-bit architecture.
+    /// ```rust,ignore
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("hello, world");
+    /// let range  = string.bounds_to_range(..);
+    /// assert_eq!(range, 0..string.len());
+    /// ```
     fn bounds_to_range(self, bounds: impl RangeBounds<usize>) -> Range<usize> {
         // If this isn't optimized away by monomorphism I'm going to shoot myself and the compiler
         let realized_start = match bounds.start_bound() {
@@ -322,6 +594,40 @@ impl<'str_lt> ShortStr<'str_lt> {
         realized_start..realized_end_exclusive
     }
 
+    /// Performs the slicing operation using `slice` on `self`, ensuring logical consistencies
+    /// between `slice` and `self`. See [`ShortStr::slice_unchecked`] for the unchecked variant.
+    /// There are four cases:
+    /// - `slice.len() == 0`: a special empty [`ShortStr`] is produced
+    /// - `slice.len() == self.len()`: just produces self
+    /// - `self.is_str()` (plain [`&str`]): perform slice using native [`&str`] slicing into [`ShortStr::from`]
+    /// - `!self.is_str()` (inlined [`&str`]): bitbash the bytes into the correct sliced version.
+    ///
+    /// # Panics
+    /// If `slice` is illogical (descending order or out of bounds values) the function panics.
+    /// Otherwise, if `slice` splits graphemes, the operation only panics for the case of when its
+    /// representing an actual [`&str`] (i.e. not inlined). See [`&str`] for more details
+    /// (particularly on splitting graphemes).
+    ///
+    /// To be clear; splitting graphemes inside the inlined [`&str`] does currently not produce a
+    /// panic.
+    ///
+    /// # Examples
+    /// These examples assume a little endian 64-bit architecture.
+    /// ```rust
+    /// use short_str::ShortStr;
+    ///
+    /// let string = ShortStr::from("hello, world!");
+    /// let slice  = string.slice(..5) ;
+    /// assert_eq!(slice, "hello");
+    /// ```
+    ///
+    /// Attempting to use an incorrect slice on a [`ShortStr`] results in a panic:
+    /// ```should_panic
+    /// use short_str::ShortStr;
+    ///
+    /// let not_inlined = ShortStr::from("hello, world! yet another inlined string");
+    /// let slice       = not_inlined.slice(..not_inlined.len() + 1);
+    /// ```
     pub fn slice(self, slice: impl RangeBounds<usize>) -> Self {
         let range = self.bounds_to_range(slice);
 
