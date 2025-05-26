@@ -18,6 +18,8 @@ const _: () = const {
     const REPO_URL: &'static str = "https://github.com/Tobiky/short-str";
 
     // Little Endian
+    // Not supported by miri and #[ignore] is only on functions
+    #[cfg(not(miri))]
     concat_assert!(
         unsafe { transmute::<&str, [u8; BYTE_SIZE]>("test") }[PTR_SIZE] as usize == "test".len(),
         "big endian architecture is currently unsupported for ShortStr's",
